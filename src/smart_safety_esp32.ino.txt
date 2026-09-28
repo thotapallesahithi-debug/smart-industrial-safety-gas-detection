@@ -1,0 +1,204 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+// -------- WiFi ----------
+const char* ssid = "";
+const char* password = "";
+// -------- ThingSpeak ----------
+String apiKey = "";
+const char* server = "http://api.thingspeak.com/update";
+// -------- Telegram ----------
+String botToken = "";
+String chatID = "";
+String lastAlert = "";
+// -------- Pins ----------
+#define TRIG_PIN 5
+#define ECHO_PIN 18
+#define GAS_PIN 34
+#define PIR_PIN 32
+#define BUZZER 25
+#define RED_LED 26
+#define GREEN_LED 2
+// -------- OLED ----------
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+// -------- Thresholds ----------
+int gasThreshold = 1750;
+int distanceThreshold = 100;
+// -------- Timing ----------
+unsigned long lastUpload = 0;
+int uploadInterval = 15000;
+// -------- Distance Function ----------
+long getDistance() {
+digitalWrite(TRIG_PIN, LOW);
+delayMicroseconds(2);
+digitalWrite(TRIG_PIN, HIGH);
+delayMicroseconds(10);
+digitalWrite(TRIG_PIN, LOW);
+long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+if (duration == 0)
+return -1;
+long distance = duration * 0.034 / 2;
+if (distance > 300)
+return -1;
+return distance;
+}
+void sendTelegram(String message) {
+if (WiFi.status() == WL_CONNECTED) {
+HTTPClient http;
+// Replace spaces with %20
+message.replace(" ", "%20");
+String url =
+"https://api.telegram.org/bot" +botToken +"/sendMessage?chat_id=" +chatID +
+"&text=" + message;
+http.begin(url);
+int httpCode = http.GET();
+http.end();
+}
+}
+// -------- Setup ----------
+void setup() {
+Serial.begin(115200);
+pinMode(TRIG_PIN, OUTPUT);
+pinMode(ECHO_PIN, INPUT);
+pinMode(PIR_PIN, INPUT_PULLDOWN);
+pinMode(BUZZER, OUTPUT);
+pinMode(RED_LED, OUTPUT);
+pinMode(GREEN_LED, OUTPUT);
+digitalWrite(BUZZER, LOW);
+// -------- OLED ----------
+if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+Serial.println("OLED not found");
+while (true);
+}
+display.clearDisplay();
+display.setTextColor(WHITE);
+// -------- PIR Warmup ----------
+Serial.println("PIR Warming Up...");
+delay(30000);
+// -------- WiFi ----------
+WiFi.begin(ssid, password);
+Serial.print("Connecting WiFi");
+while (WiFi.status() != WL_CONNECTED) {
+delay(500);
+Serial.print(".");
+}
+Serial.println("\nWiFi Connected!");
+}
+// -------- Loop ----------
+void loop() {
+int gasValue = 0;
+long distanceSum = 0;
+int validReadings = 0;
+// -------- Averaging ----------
+for (int i = 0; i < 7; i++) {
+gasValue += analogRead(GAS_PIN);
+long d = getDistance();
+if (d != -1) {
+distanceSum += d;
+validReadings++;
+}
+delay(20);
+}
+gasValue /= 7;
+long distance;
+if (validReadings > 0)
+distance = distanceSum / validReadings;
+else
+distance = 150;
+// -------- PIR Motion ----------
+int motion = digitalRead(PIR_PIN);
+String motionText;
+if (motion == 1)
+motionText = "YES";
+else
+motionText = "NO";
+// -------- Classification ----------
+String condition;
+int statusCode;
+// -------- SAFE ----------
+if (gasValue < gasThreshold) {
+condition = "SAFE";
+statusCode = 0;
+lastAlert = "";
+digitalWrite(GREEN_LED, HIGH);
+digitalWrite(RED_LED, LOW);
+digitalWrite(BUZZER, LOW);
+}
+// -------- GAS DETECTED ----------
+else {
+// -------- CRITICAL ----------
+if (motion == 1 && distance < distanceThreshold) {
+condition = "CRITICAL";
+statusCode = 1;
+if (lastAlert != "CRITICAL") {
+sendTelegram("CRITICAL ALERT: Gas leak detected! Human presence
+identified in the affected area. Immediate action required.");
+lastAlert = "CRITICAL";
+}
+digitalWrite(GREEN_LED, LOW);
+// Blinking LED + buzzer beep
+digitalWrite(RED_LED, HIGH);
+digitalWrite(BUZZER, HIGH);
+}
+// -------- HAZARDOUS ----------
+else {
+condition = "HAZARDOUS";
+statusCode = 2;
+if (lastAlert != "HAZARDOUS") {
+sendTelegram("HAZARDOUS ALERT: Gas leak detected. Area appears
+unoccupied. Immediate inspection required.");
+lastAlert = "HAZARDOUS";
+}
+digitalWrite(GREEN_LED, LOW);
+digitalWrite(RED_LED, HIGH);
+digitalWrite(BUZZER, HIGH);
+}
+}
+// -------- OLED ----------
+display.clearDisplay();
+display.setTextSize(1);
+display.setCursor(0, 0);
+display.println("Gas:");
+display.println(gasValue);
+display.println("Distance:");
+display.println(distance);
+display.println("Motion:");
+display.println(motionText);
+display.println("Status:");
+display.println(condition);
+display.display();
+// -------- Serial Monitor ----------
+Serial.print("Gas: ");
+Serial.print(gasValue);
+Serial.print(" | Distance: ");
+Serial.print(distance);
+Serial.print(" | Motion: ");
+Serial.print(motionText);
+Serial.print(" | Status: ");
+Serial.println(condition);
+// -------- ThingSpeak Upload ----------
+if (WiFi.status() == WL_CONNECTED &&
+millis() - lastUpload > uploadInterval) {
+HTTPClient http;
+String url = String(server) +
+"?api_key=" + apiKey +
+"&field1=" + String(gasValue) +
+"&field2=" + String(distance) +
+"&field3=" + String(statusCode) +
+"&field4=" + String(motion);
+http.begin(url);
+int httpCode = http.GET();
+if (httpCode > 0) {
+Serial.println("Uploaded to ThingSpeak");
+} else {
+Serial.println("ThingSpeak Upload Failed");
+}
+http.end();
+lastUpload = millis();
+}
+delay(500);
+}
