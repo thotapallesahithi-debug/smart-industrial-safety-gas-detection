@@ -1,0 +1,17 @@
+# Local configuration / credentials
+secrets.h
+config.h
+
+# Arduino / build files
+*.bin
+*.elf
+*.hex
+
+# VS Code settings
+.vscode/
+
+# Temporary files
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
