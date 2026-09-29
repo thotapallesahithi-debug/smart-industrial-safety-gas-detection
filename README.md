@@ -117,6 +117,20 @@ the system enters the critical state:
 
 ![Circuit Diagram](docs/circuit-diagram.png)
 
+## Project Demonstration
+
+### Real Hardware Prototype
+![Hardware Prototype](images/hardware-prototype.jpg)
+
+### Safety State Demonstration
+![SAFE, HAZARDOUS and CRITICAL Conditions](images/oled-conditions.jpg)
+
+### ThingSpeak Dashboard
+![ThingSpeak Dashboard](images/thingspeak-dashboard.png)
+
+### Telegram Alert
+![Telegram Alert](images/telegram-alert.png)
+
 ## Software
 
 The project was developed using:
