@@ -1,4 +1,5 @@
 # Smart Industrial Safety and Gas Leak Detection System
+**Project Period:** June – July 2026
 
 An ESP32-based IoT safety monitoring system designed to detect gas leakage, monitor human presence and proximity to the affected area, classify the situation into different safety levels, and provide local and remote alerts.
 
